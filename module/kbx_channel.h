@@ -70,11 +70,4 @@ int  read_user_message_to_kernel(pid_t pid, s32 uid, void **msg, int *len);
 int write_kernel_message_to_user(pid_t pid, s32 uid, void*, int len, int op);
 /* --------------------------------------------------------------------------------
  * */
-enum IC_CALL_TYPES{
-	THE_BIND_CALL,
-	THE_CONNECT_CALL,
-	THE_ACCEPT_CALL,
-};
-/* --------------------------------------------------------------------------------
- * */
 #endif
