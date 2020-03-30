@@ -1,16 +1,60 @@
+/*
+ * 	kubix.cpp
+ * 
+ * 2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmai.com>
+ * All rights reserved.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 #include <iostream>
 #include <errno.h>
 #include <linux/netlink.h>
 #include "kubix.h"
 
 /* ------------------------------------------------------------------------------ */
-char *strNodeAttributes(Node *node, char (*arr_ptr)[32])
+const char *strNodeState(int state)
 {
-	char *arr = *arr_ptr;
-	sprintf(arr,"Node[%d,%d], %s", node->_pid, node->_unique,
-			strNodeState(node->state));
-	return arr;
+	switch(state)
+	{
+		case Node::NLC_NETLINK: return "NLC_NETLINK";
+		case Node::NLC_DESTROY: return "NLC_DESTROY";
+	}
+	return "N/A";
 }
+/* ------------------------------------------------------------------------------ */
+const char *str_opertype(int t )
+{
+	switch( t ){
+	case KUBIX_CHANNEL: return "KUBIX_CHANNEL"; break;
+	case KERNEL_REQUEST: return "KERNEL_REQUEST"; break;
+	case USER_MESSAGE: return "USER_MESSAGE"; break;
+	case KERNEL_RELEASE: return "KERNEL_RELEASE"; break;
+	case USER_RELEASE: return "USER_RELEASE"; break;
+	case KERNEL_REPORT: return "KERNEL_REPORT"; break;
+	case NO_ACTION: return "NO_ACTION"; break;
+	default: return "undefined"; }
+}
+
+/* ------------------------------------------------------------------------------ */
+struct UserChannelThreadCtx{
+	Kubix *_bus;
+	int    pid;
+	int    uid;
+	int    running;
+};
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  */
 Node::setSignalLock::setSignalLock(pthread_mutex_t *mp, pthread_cond_t *ep)
 	: _mutex_ptr(mp)
@@ -30,7 +74,7 @@ Node::setWaitLock::setWaitLock(pthread_mutex_t *mp, pthread_cond_t *ep)
 	, _cond_ptr(ep)
 {
 	pthread_mutex_lock(_mutex_ptr);
-    clock_gettime(CLOCK_REALTIME, &_ts);
+	clock_gettime(CLOCK_REALTIME, &_ts);
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 Node::setWaitLock::~setWaitLock()
@@ -40,11 +84,29 @@ Node::setWaitLock::~setWaitLock()
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 void Node::setWaitLock::waitMsg()
 {
-    _ts.tv_sec += 1;
+	_ts.tv_sec += 1;
 	pthread_cond_timedwait(_cond_ptr, _mutex_ptr, &_ts);
 }
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
+Node::Node(int pid, int uid)
+{
+	_mutex = PTHREAD_MUTEX_INITIALIZER;
+	_cond = PTHREAD_COND_INITIALIZER; // default attributes
+	_thread_context = nullptr;
+	_state = NLC_NETLINK;
+	_pid = pid;
+	_unique = uid;
+	_opt = KUBIX_CHANNEL;
+	_ret = 0;
+	memset(_recv_buffer, 0x00, PAYLOAD_MAX_SIZE);
+}
+Node::~Node()
+{
+	pthread_cond_destroy(&_cond);
+	pthread_mutex_destroy(&_mutex);
+}
 /* ------------------------------------------------------------------------------ */
-#define get_composite_key(v1, v2) (int64_t)((((uint64_t)v2) << 32) || (uint64_t)v1)
+#define get_composite_key(v1, v2) (int64_t)((((uint64_t)v2) << 32) | (uint64_t)v1)
 /* ------------------------------------------------------------------------------ */
 Kubix::Kubix()
 	: _nodes(1 << BUS_HT_BITS)
@@ -55,7 +117,7 @@ Kubix::Kubix()
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 Kubix::~Kubix()
 {
-	purifyKubix();
+	purify();
 	pthread_mutex_destroy(&_bus_mutex);
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
@@ -71,7 +133,7 @@ bool Kubix::createNode(int pid, int uid, Node *(&node))
 			return false;
 		}
 	}
-	setKubixLock lock(&_bus_mutex);
+	setLock lock(&_bus_mutex);
 	node_ptr = new Node(pid, uid);
 	int64_t key = get_composite_key(pid, uid);
 	_nodes[key] = node_ptr;
@@ -87,7 +149,7 @@ bool Kubix::findNode(int pid, int uid, Node *(&node))
 {
 	int64_t key = get_composite_key(pid, uid);
 	node = nullptr;
-	setKubixLock lock(&_bus_mutex);
+	setLock lock(&_bus_mutex);
 	auto it = _nodes.find(key);
 	if(it == end(_nodes))
 		return false;
@@ -106,40 +168,42 @@ bool Kubix::eraseNode(int pid, int uid, Node *(&node))
 	return false;
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
-void Kubix::dumpKubix()
+void Kubix::dump()
 {
-	setKubixLock lock(&_bus_mutex);
+	setLock lock(&_bus_mutex);
 	char arr[32];
 	std::cerr << "_nodes's buckets contain:\n";
 	for ( unsigned i = 0; i < _nodes.bucket_count(); ++i) {
-		if(0 < _nodes.bucket_size(i)){ 
+		if(0 < _nodes.bucket_size(i)){
 			std::cerr << "bucket #" << i << " contains:";
 			for ( auto local_it  = _nodes.begin(i);
-			           local_it!= _nodes.end(i);
-			         ++local_it )
+					   local_it!= _nodes.end(i);
+					 ++local_it )
 				std::cerr << " " << local_it->first << ": "
-					<< strNodeAttributes(local_it->second, &arr);
+					<< "Node[" << local_it->second->_pid << ","
+					<< local_it->second->_unique
+					<< "], " << strNodeState(local_it->second->_state);
 			std::cerr << std::endl;
 		}
 	}
 
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
-void Kubix::purifyKubix()
+void Kubix::purify()
 {
-	setKubixLock lock(&_bus_mutex);
+	setLock lock(&_bus_mutex);
 	for(auto it = _nodes.begin();it != _nodes.end();it++){
-		delete it->second;	
+		delete it->second;
 	}
 }
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  */
-Kubix::setKubixLock::setKubixLock(pthread_mutex_t *mp)
+Kubix::setLock::setLock(pthread_mutex_t *mp)
 	: _mutex_ptr(mp)
 {
 	pthread_mutex_lock(_mutex_ptr);
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
-Kubix::setKubixLock::~setKubixLock()
+Kubix::setLock::~setLock()
 {
 	pthread_mutex_unlock(_mutex_ptr);
 }
@@ -154,7 +218,7 @@ void * Kubix::dispatch(void* context)
 			char buf[1024];
 		};
 	} rmsg;
-    int len;
+	int len;
 	time_t tm;
 	struct DistributorContext *pctx = (struct DistributorContext*)context;
 	Kubix *bus = pctx->_bus;
@@ -191,38 +255,70 @@ void * Kubix::dispatch(void* context)
 		}
 		switch (rmsg.nl_hdr.nlmsg_type) {
 		case NLMSG_ERROR:
-			fprintf(stderr, "Error message received 'NLMSG_ERROR'.\n");
+			fprintf(stderr, "%d:%s:: Error message received 'NLMSG_ERROR'.\n",
+					__LINE__, __func__);
 			break;
 		case NLMSG_DONE:
+			// if rmsg.cn_msg.id = 11,1 continue on spurious
 			time(&tm);
-			fprintf(stderr, "%.24s: id[%x.%x] [seq:%u.ack:%u], "
-                    "payload[len:%d,0x%u]\n",
-				ctime(&tm), rmsg.cn_msg.id.idx, rmsg.cn_msg.id.val, rmsg.cn_msg.seq,
-				rmsg.cn_msg.ack, rmsg.cn_msg.len, rmsg.cn_msg.data);
+			fprintf(stderr, "%d:%s:: %.24s: id[%x.%x] [seq:%u.ack:%u], "
+					"payload[len:%d,0x%u]\n",
+					__LINE__, __func__,
+				ctime(&tm), rmsg.cn_msg.id.idx, rmsg.cn_msg.id.val,
+				rmsg.cn_msg.seq, rmsg.cn_msg.ack, rmsg.cn_msg.len,
+				rmsg.cn_msg.data);
 			{
-				fprintf(stderr, "payload: node[%d.%d], Kubix msg[len:%d,0x%u],"
-                        " type %d\n",
-						rmsg.kbx_msg.pid, rmsg.kbx_msg.uid, rmsg.kbx_msg.data_len,
-                        rmsg.kbx_msg.data, rmsg.kbx_msg.opt);
+				fprintf(stderr, "%d:%s:: payload: node[%d.%d], "
+						"Kubix msg[len:%d,0x%u], type %d\n",
+						__LINE__, __func__,
+						rmsg.kbx_msg.pid, rmsg.kbx_msg.uid,
+						rmsg.kbx_msg.data_len, rmsg.kbx_msg.data,
+						rmsg.kbx_msg.opt);
 				Node *node;
 				if(!bus->findNode(rmsg.kbx_msg.pid, rmsg.kbx_msg.uid, node)){
-					fprintf(stderr, "lost buffer: node[%d.%d] is not served!\n",
+					fprintf(stderr, "%d:%s:: a new channel node[%d.%d] "
+							"is not served yet!\n",
+							__LINE__, __func__,
 							rmsg.kbx_msg.pid, rmsg.kbx_msg.uid);
+
+					if(rmsg.kbx_msg.opt != KUBIX_CHANNEL){
+						fprintf(stderr, "%d:%s:: invalid operatiom type %s\n",
+								__LINE__, __func__,
+								str_opertype(rmsg.kbx_msg.opt));
+						continue;
+					}
+					if(!bus->createNode(rmsg.kbx_msg.pid, rmsg.kbx_msg.uid, node)){
+						fprintf(stderr, "%d:%s:: failed to create a new "
+								"bus node.\n",
+								__LINE__, __func__);
+						continue;
+					}
+					pthread_t tid;
+					UserChannelThreadCtx *context = new UserChannelThreadCtx;
+					context->_bus = bus;
+					context->pid = rmsg.kbx_msg.pid;
+					context->uid = rmsg.kbx_msg.uid;
+					context->running = 1;
+					pthread_create(&tid, NULL, &Kubix::userAppThread,
+								   &context);
+					node->_thread_context = context;
 					break;
 				}
 				Node::setSignalLock lock(&node->_mutex, &node->_cond);
 				if(0 < node->_recv_len)
-					fprintf(stderr, "previous data loss %d\n", node->_recv_len);
+					fprintf(stderr, "%d:%s:: previous data loss %d\n",
+							__LINE__, __func__,
+							node->_recv_len);
 				if(rmsg.kbx_msg.data_len){
 					memset(node->_recv_buffer, 0x00, PAYLOAD_MAX_SIZE);
 					memcpy(node->_recv_buffer, rmsg.kbx_msg.data,
-                           rmsg.kbx_msg.data_len);
+						   rmsg.kbx_msg.data_len);
 					node->_recv_len = rmsg.kbx_msg.data_len;
 				}
-                node->_pid = rmsg.kbx_msg.pid;
-                node->_unique = rmsg.kbx_msg.uid;
-                node->_opt = rmsg.kbx_msg.opt;
-                node->_ret = rmsg.kbx_msg.ret;
+				node->_pid = rmsg.kbx_msg.pid;
+				node->_unique = rmsg.kbx_msg.uid;
+				node->_opt = rmsg.kbx_msg.opt;
+				node->_ret = rmsg.kbx_msg.ret;
 			}
 			break;
 		default:
@@ -232,14 +328,15 @@ void * Kubix::dispatch(void* context)
 	fprintf(stderr,"%d:%s:: quit Bus Loop errno '%s' [%d]\n",
 			__LINE__, __func__, strerror(errno), errno);
 
-	return (void*)0; 
+	return (void*)0;
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 pthread_t Kubix::runBus()
 {
 	pthread_t tid;
-	struct DistributorContext context = { ._bus = this, .running = 1, };
-	pthread_create( &tid, NULL, &Kubix::dispatch, &context);
+	_context._bus = this;
+	_context.running = 1;
+	pthread_create(&tid, NULL, &Kubix::dispatch, &_context);
 
 	return tid;
 }
@@ -255,10 +352,12 @@ int Kubix::setCnFd()
 	}
 
 	l_local.nl_family = AF_NETLINK;
-	l_local.nl_groups = CN_SS_IDX; /* bitmask of requested groups */
+	l_local.nl_groups = -1; //CN_SS_IDX; /* bitmask of requested groups */
 	l_local.nl_pid = 0;
 
-	fprintf(stderr, "subscribing to %u.%u\n", CN_SS_IDX, CN_SS_VAL);
+	fprintf(stderr, "%d:%s:: subscribing to %u.%u\n",
+			__LINE__, __func__,
+			CN_SS_IDX, CN_SS_VAL);
 
 	if(bind(_pfd.fd, (struct sockaddr *)&l_local, sizeof(struct sockaddr_nl)) < 0 ){
 		perror("bind");
@@ -269,7 +368,7 @@ int Kubix::setCnFd()
 	_pfd.events = POLLIN;
 	_pfd.revents = 0;
 
-    return _pfd.fd;
+	return _pfd.fd;
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 int Kubix::send2kernel(int pid, int uid, int op, int ret, void *payload, int len)
@@ -285,23 +384,25 @@ int Kubix::send2kernel(int pid, int uid, int op, int ret, void *payload, int len
 	} smsg;
 	int cn_msg_data_len = sizeof(struct kubix_hdr) + len;
 	int nlmsg_data_len  = NLMSG_LENGTH(sizeof(struct cn_msg) + cn_msg_data_len);
-	int smsg_len        = sizeof(struct nlmsghdr) + nlmsg_data_len;
+	int smsg_len		= sizeof(struct nlmsghdr) + nlmsg_data_len;
 
+	fprintf(stderr, "%d:%s: [pid:%d, uid:%d] message length %d\n",
+		   __LINE__, __func__, pid, uid, len);
 	memset(&smsg, 0, sizeof(smsg));
-	smsg.nl_hdr.nlmsg_len = nlmsg_data_len;         /* Netlink */
+	smsg.nl_hdr.nlmsg_len = nlmsg_data_len;		 /* Netlink */
 	smsg.nl_hdr.nlmsg_pid = getpid();
 	smsg.nl_hdr.nlmsg_type = NLMSG_DONE;
-	smsg.cn_msg.id.idx = CN_SS_IDX;                 /* Connector */
+	smsg.cn_msg.id.idx = CN_SS_IDX;				 /* Connector */
 	smsg.cn_msg.id.val = CN_SS_VAL;
-    smsg.cn_msg.ack = 0;
-    smsg.cn_msg.len = 0;
+	smsg.cn_msg.ack = 0;
+	smsg.cn_msg.len = 0;
 	smsg.cn_msg.len = cn_msg_data_len;
-	smsg.kbx_msg.pid = pid;                         /* Kubix */
+	smsg.kbx_msg.pid = pid;						 /* Kubix */
 	smsg.kbx_msg.uid = uid;
 	smsg.kbx_msg.opt = op;
 	smsg.kbx_msg.ret = ret;
 	smsg.kbx_msg.data_len = len;
-	memcpy(&smsg.buf, payload, len);                /* App payload */
+	memcpy(&smsg.buf, payload, len);				/* App payload */
 	if(send(fd, &smsg, smsg_len, 0) != smsg_len){
 		perror("send");
 		return -1;
@@ -310,7 +411,7 @@ int Kubix::send2kernel(int pid, int uid, int op, int ret, void *payload, int len
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 bool Kubix::getMessage(int pid, int uid, int &op, int &ret,
-                       char (*buffer)[PAYLOAD_MAX_SIZE], int &len)
+					   char (*buffer)[PAYLOAD_MAX_SIZE], int &len)
 {
 	Node *node;
 	if(!findNode(pid, uid, node)){
@@ -323,21 +424,53 @@ bool Kubix::getMessage(int pid, int uid, int &op, int &ret,
 	while(!node->_recv_len)
 		lock.waitMsg();
 
+	fprintf(stderr, "%d:%s: got message for node[%d.%d]\n",
+		   __LINE__, __func__, pid, uid);
+
 	char *msg = *buffer;
 	memset(msg, 0x00, sizeof(buffer));
 
 	memcpy(msg, node->_recv_buffer, node->_recv_len);
 	len = node->_recv_len;
-    op  = node->_opt;
-    ret = node->_ret;
+	op  = node->_opt;
+	ret = node->_ret;
 
 	memset(node->_recv_buffer, 0x00, sizeof(node->_recv_buffer));
 	node->_recv_len = 0;
 
-	return false;
+	return true;
 }
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
+void *Kubix::userAppThread(void *c)
+{
+	UserChannelThreadCtx *pctx = (UserChannelThreadCtx*)c;
+	int pid = pctx->pid;
+	int uid = pctx->uid;
+	Kubix *bus = pctx->_bus;
 
+	char buffer[PAYLOAD_MAX_SIZE];
+	int len, op, ret, err;
+
+	while(pctx->running){
+		// wait for kernel message
+		if(!bus->getMessage(pid, uid, op, ret, &buffer, len))
+			continue;
+		// call user app processing logic
+		UserCallbackCtx ucc;
+		ucc.pid = pid;
+		ucc.uid = uid;
+		ucc.op  = op;
+		ucc.ret = ret;
+		memcpy(ucc.msg, buffer, len);
+		ucc.len = len;
+		err = bus->_user_app_callback(&ucc);
+		if(err)
+			continue;
+		// send response back to kernal with user app payload instead.
+		err = bus->send2kernel(pid, uid, op, ret, &buffer, len);
+	}
+	return (void*)0;
+}
 #ifdef UNIT_TEST
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 void Kubix::putMsg(int pid, int uid, char *msg, int len, bool wake_up)
