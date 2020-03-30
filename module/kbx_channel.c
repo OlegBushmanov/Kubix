@@ -430,14 +430,3 @@ out:
 EXPORT_SYMBOL(write_kernel_message_to_user);
 /* -----------------------------------------------------------------------------
  * *
-const char *str_req_call(int type)
-{
-	switch(type){
-		case THE_BIND_CALL:    return "THE_BIND_CALL";    break;
-		case THE_CONNECT_CALL: return "THE_CONNECT_CALL"; break;
-		case THE_ACCEPT_CALL:  return "THE_ACCEPT_CALL";  break;
-	}
-	return "";
-}
- * -----------------------------------------------------------------------------
- * */
