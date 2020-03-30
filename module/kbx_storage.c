@@ -1,3 +1,24 @@
+/*
+ * 	kbx_storage.c
+ * 
+ * 2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmai.com>
+ * All rights reserved.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>	/* Required for EXPORT_SYMBOL */
 #include <linux/linkage.h>
@@ -18,7 +39,7 @@ static DEFINE_SPINLOCK(kubix_ht_lock);
 static struct kubix_channels *channels = NULL; /* Channel storage for sessions */
 /* --------------------------------------------------------------------------------
  * */
-#define get_composite_key(v1, v2) (s64)((((u64)v2) << 32) || (u64)v1)
+#define get_composite_key(v1, v2) (s64)((((u64)v2) << 32) | (u64)v1)
 #define hash_key_fmt "hash_min(pid=%d, uid=%d)=>bucket[%d]"
 #define hash_key_val(p, u, k) p, u, hash_min(k, CHAN_HT_WIDTH)
 /* --------------------------------------------------------------------------------
@@ -48,7 +69,7 @@ int kubix_store_init(void)
 	spin_lock(&kubix_ht_lock);
 	channels = kzalloc(sizeof(struct kubix_channels), GFP_KERNEL);
 	hash_init(channels->chan_hash);
-	channels->idx_val = 10;                     /* 10 callbacks are reserved */
+	channels->idx_val = 1;
 	spin_unlock(&kubix_ht_lock);
 
 out:
@@ -109,7 +130,7 @@ int add_chan_node(pid_t pid, s32 uid, struct cb_id *id_ptr,
 	}
 	else{
 		chaninfo->id.idx = CN_SS_IDX;
-		chaninfo->id.val = channels->idx_val;
+		chaninfo->id.val = CN_SS_VAL;
 	}
 
 	hash_add(channels->chan_hash, &chaninfo->node, key);

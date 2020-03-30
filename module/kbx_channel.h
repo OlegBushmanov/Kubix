@@ -1,3 +1,24 @@
+/*
+ * 	kbx_channel.h
+ * 
+ * 2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmai.com>
+ * All rights reserved.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 #include "kbx_storage.h"
 
 #ifndef _KBX_CHANNEL__H_
@@ -46,6 +67,7 @@ void send_kubix_handshake(struct chan_node *chaninfo);
 void cn_user_msg_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp);
 int  get_verified_channel(pid_t, s32, void*, int, struct chan_node **c);
 int  read_user_message_to_kernel(pid_t pid, s32 uid, void **msg, int *len);
+int write_kernel_message_to_user(pid_t pid, s32 uid, void*, int len, int op);
 /* --------------------------------------------------------------------------------
  * */
 enum IC_CALL_TYPES{

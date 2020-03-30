@@ -1,3 +1,24 @@
+/*
+ * 	kbx_channel.c
+ * 
+ * 2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmai.com>
+ * All rights reserved.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -10,6 +31,14 @@
 #include "kbx_channel.h"
 
 #define KUBIX "channel"
+
+/* ------------------------------------------------------------------------------
+ * this function is declared but not exported! so repeat it here
+ */
+static int cn_cb_equal_001(struct cb_id *i1, struct cb_id *i2)
+{
+	return ((i1->idx == i2->idx) && (i1->val == i2->val));
+}
 
 /* -----------------------------------------------------------------------------
  * */
@@ -67,6 +96,9 @@ void send_kubix_handshake(struct chan_node *chaninfo)
 	struct kubix_hdr *hndshk;
 	int len = sizeof(hello);
 	hndshk = kzalloc(sizeof(*hndshk) + len + 1, GFP_ATOMIC);
+	hndshk->pid = 0;
+	hndshk->uid = -10;
+	hndshk->opt = KUBIX_CHANNEL;
 	memcpy(&hndshk->data, hello, len);
 	hndshk->data_len = len;
 	send_message_to_user(hndshk, chaninfo->seq++);
@@ -77,7 +109,7 @@ void send_kubix_handshake(struct chan_node *chaninfo)
 static void kubix_handshake(struct chan_node *kbxinfo, struct kubix_hdr *rsp)
 {
 	struct cm_handshake_result *result;
-	if(rsp->opt == CHAN_NODE_HANDSHAKE){/* CM response on initial handshake */
+	if(rsp->opt == KUBIX_CHANNEL){/* CM response on initial handshake */
 		result = (struct cm_handshake_result*)rsp->data;
 		if(result->result < 0 ){
 			printk(KERN_ERR KUBIX": %d, %s - handshake %d.%d: user rejection\n",
@@ -89,7 +121,9 @@ static void kubix_handshake(struct chan_node *kbxinfo, struct kubix_hdr *rsp)
              * */
 		}
 		kbxinfo->state = CHAN_NODE_NETLINK;
-		/* print handshake message */
+
+		printk(KERN_INFO KUBIX": %d, %s - handshake %d.%d succeeded!\n",
+			   __LINE__, __func__, rsp->pid, rsp->uid);
         return;
 	}
     printk(KERN_INFO KUBIX": %d, %s - handshake %d.%d was not requested.\n",
@@ -106,7 +140,7 @@ void cn_user_msg_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp)
 
     /* if the message come is unwanted guest
      */
-	if(!cn_cb_equal(&msg->id, &kubix_id)){
+	if(!cn_cb_equal_001(&msg->id, &kubix_id)){
 		printk(KERN_INFO KUBIX": %d, %s - spurious message %d.%d <> %d.%d\n",
 			   __LINE__, __func__, msg->id.idx, msg->id.val,
 			   kubix_id.idx, kubix_id.val);
@@ -137,7 +171,7 @@ void cn_user_msg_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp)
 		goto wake_up_out;
 	}
 	printk(KERN_INFO KUBIX": %d, %s - Operation in user message %s; "
-		   "Related chanmel node [%d.%d] in state %s; resulted as %d\n",
+		   "Related channel node [%d.%d] in state %s; resulted as %d\n",
 		   __LINE__, __func__, str_ops_type(kbx_hdr->opt), kbx_hdr->pid,
 		   kbx_hdr->uid, str_channel_state(chaninfo->state), kbx_hdr->ret);
 
