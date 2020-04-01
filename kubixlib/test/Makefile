@@ -19,7 +19,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #################################################################################
 
-ROOT := $(shell echo $$PWD | sed 's%\(.*/kubix\)/.*%\1%')
+ROOT := $(shell echo $$PWD | sed 's%\(.*/Kubix\)/.*%\1%')
 
 LIBDIR=\
 	$(ROOT)/kubixlib/lib
