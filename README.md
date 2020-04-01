@@ -78,26 +78,29 @@
     Kernel node0 <┄┄┄┄> User node0  - communication within Kubix - between
                                       the kernel module and a userspace
                                       application.
-<br/>
- 7. In this project a socket from the netlink connector family provides physical commucation between
-    kernel and userspace, for details of API refer to 
-    Linux [kernel connector](https://www.kernel.org/doc/Documentation/connector/connector.txt).
-    Recompile linu kernel and install.
-    Review [sample](https://elixir.bootlin.com/linux/v4.18/source/samples/connector)
-<br/><br/>
- * 2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmail.com>
- * All rights reserved.
- * 
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+<br/>[]()
+***Note:*** In this project a socket from the netlink connector family provides physical commucation between
+kernel and userspace, for details of API refer to
+[Linux kernel connector](https://www.kernel.org/doc/Documentation/connector/connector.txt).
+Recompile Linux kernel and install.  Review the [sample](https://elixir.bootlin.com/linux/v4.18/source/samples/connector)
+implementation for testing connector **API**.
+
+-------------------------------------------------------------------------
+```
+2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmail.com>
+All rights reserved.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+```
