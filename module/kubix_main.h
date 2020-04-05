@@ -27,43 +27,43 @@
  *           Kernel User space Bus for Interprocess eXchange                .
  *                        Protocol Version 0.1
  *
- *          +----------+
- *          | User Bus |                    User Space
- *          +----------+
- *          | Dispatch |>----+----------+----------+----- . . . . ----+
- *          | messages |     v          v          v                  v
- * +-------++----------+ +-------+  +-------+  +-------+          +-------+
- * | node0 || Hash Tbl | | node1 |  | node2 |  | node3 |          | nodeN |
- * +-------++----------+ +-------+  +-------+  +-------+          +-------+
- *     ^      ^      ^       ^          ^          ^                  ^
- *     .      | N    |       . v        . v        . v                . v
- *     .      | e  P |       . i        . i        . i                . i
- *     .      | t  h |       . r        . r        . r                . r
- *     .      | l  y |       . t        . t        . t                . t
- *     .      | i  z |       . u        . u        . u                . u
- *     .      | n    |       . a        . a        . a                . a
- *     .      | k    |       . l        . l        . l                . l
- *     .      |      |       .          .          .                  .
- * ____.______|______|_______.__________,__________.__________________.____
- *     .      | C    |       .          .          .
- *     .      | o  C |       . c        . c        . c                . c
- *     .      | n  h |       . h        . h        . h                . h
- *     .      | n  a |       . a        . a        . a                . a
- *     .      | e  n |       . n        . n        . n                . n
- *     .      | t  n |       . n        . n        . n                . n
- *     .      | t  e |       . e        . e        . e                . e
- *     .      | o  l |       . l        . l        . l                . l
- *     .      | r    |       .          .          .                  .
- *     v      v      v       v          v          v                  v
- * +-------++----------+ +-------+  +-------+  +-------+          +-------+
- * | node0 || Hash Tbl | | node1 |  | node2 |  | node3 |          | nodeN |
- * +-------++----------+ +-------+  +-------+  +-------+          +-------+
- *          | Dispatch |     ^          ^          ^                  ^
- *          | messages |>----+----------+----------+----- . . . . ----+
- *          +----------+
- *          | Kernel   |                  Kernel Space
- *          |      Bus |
- *          +----------+
+ *          ┌──────────┐
+ *          │ User Bus │                    User Space
+ *          ├──────────┤
+ *          │ Dispatch │>────┬──────────┬──────────┬───── . . . . ────┐
+ *          │ messages │     v          v          v                  v
+ * ┌───────┐├──────────┐ ┌───────┐  ┌───────┐  ┌───────┐          ┌───────┐
+ * │ node0 ││ Hash Tbl │ │ node1 │  │ node2 │  │ node3 │          │ nodeN │
+ * └───────┘└──────────┘ └───────┘  └───────┘  └───────┘          └───────┘
+ *     ^          ^          ^          ^          ^                  ^
+ *     ┆        N │          ┆ v        ┆ v        ┆ v                ┆ v
+ *     ┆        e │ P        ┆ i        ┆ i        ┆ i                ┆ i
+ *     ┆        t │ h        ┆ r        ┆ r        ┆ r                ┆ r
+ *     ┆        l │ y        ┆ t        ┆ t        ┆ t                ┆ t
+ *     ┆        i │ z        ┆ u        ┆ u        ┆ u                ┆ u
+ *     ┆        n │          ┆ a        ┆ a        ┆ a                ┆ a
+ *     ┆        k │          ┆ l        ┆ l        ┆ l                ┆ l
+ *     ┆          │          ┆          ┆          ┆                  ┆
+ * ____┆______ ___│__ _______┆__________┆__________┆__________________┆____
+ *     ┆        C │          ┆          ┆          ┆
+ *     ┆        o │ c        ┆ c        ┆ c        ┆ c                ┆ c
+ *     ┆        n │ h        ┆ h        ┆ h        ┆ h                ┆ h
+ *     ┆        n │ a        ┆ a        ┆ a        ┆ a                ┆ a
+ *     ┆        e │ n        ┆ n        ┆ n        ┆ n                ┆ n
+ *     ┆        t │ n        ┆ n        ┆ n        ┆ n                ┆ n
+ *     ┆        t │ e        ┆ e        ┆ e        ┆ e                ┆ e
+ *     ┆        o │ l        ┆ l        ┆ l        ┆ l                ┆ l
+ *     ┆        r │          ┆          ┆          ┆                  ┆
+ *     v          v          v          v          v                  v
+ * ┌───────┐┌──────────┐ ┌───────┐  ┌───────┐  ┌───────┐          ┌───────┐
+ * │ node0 ││ Hash Tbl │ │ node1 │  │ node2 │  │ node3 │          │ nodeN │
+ * └───────┘├──────────┘ └───────┘  └───────┘  └───────┘          └───────┘
+ *          │ Dispatch │     ^          ^          ^                  ^
+ *          │ messages │>────┴──────────┴──────────┴───── . . . . ────┘
+ *          ├──────────┤
+ *          │ Kernel   │                  Kernel Space
+ *          │      Bus │
+ *          └──────────┘
  *
  * KUBUX is a bus for communication between user space processes/threads and
  * kernel threads, those are modules or bottom parts of user space processes.
@@ -96,8 +96,8 @@
  *
  * 6. See the diagram above:
  *
- *    Kernel bus <------>  User bus   - hysical Netlink channel
- *    Kernel node <.....> Usr node    - virtual Kubix channels
- *    Kernel Node0 <....> User Node0  - communication with Application itself.
+ *    Kernel bus <──────>  User bus   ─ hysical Netlink channel
+ *    Kernel node <┄┄┄┄┄> Usr node    ─ virtual Kubix channels
+ *    Kernel Node1 <┄┄┄┄> User Node0  ─ communication with Application itself.
  *
  */
