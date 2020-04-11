@@ -65,7 +65,7 @@ struct cm_handshake_result{
 void send_message_to_user(struct kubix_hdr *, u32 seq);
 void send_kubix_handshake(struct chan_node *chaninfo);
 void cn_user_msg_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp);
-int  get_verified_channel(pid_t, s32, void*, int, struct chan_node **c);
+int  get_verified_channel(pid_t, s32, void*, int*, struct chan_node **c);
 int  read_user_message_to_kernel(pid_t pid, s32 uid, void **msg, int *len);
 int write_kernel_message_to_user(pid_t pid, s32 uid, void*, int len, int op);
 /* --------------------------------------------------------------------------------

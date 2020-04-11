@@ -70,11 +70,16 @@ void send_message_to_user(struct kubix_hdr *data, u32 seq)
 	struct cn_msg *m;
 	int len = sizeof(*data) + data->data_len;
 
-	printk(KERN_DEBUG KUBIX": %d,%s - [%d,%d] seq  %u, type %s\n",
+	printk(KERN_DEBUG KUBIX": %d,%s - [%d,%d] seq  %u, type %s, lrngth %d\n",
 			__LINE__, __func__,
-			data->pid, data->uid, seq, str_ops_type(data->opt));
+			data->pid, data->uid, seq, str_ops_type(data->opt), len);
 
-	m = kzalloc(sizeof(*m) + len + 1, GFP_ATOMIC);
+	m = kzalloc(sizeof(*m) + sizeof(*data) + len + 1, GFP_ATOMIC);
+    if(m == NULL){
+        printk(KERN_ERR KUBIX": %d,%s - failed to allocate message buffer.\n",
+               __LINE__, __func__);
+        goto out;
+    }
 
     m->id.idx = CN_SS_IDX;
     m->id.val = CN_SS_VAL;
@@ -87,6 +92,9 @@ void send_message_to_user(struct kubix_hdr *data, u32 seq)
 
 	cn_netlink_send(m, 0, CN_SS_IDX, GFP_ATOMIC);
 	kfree(m);
+
+out:
+    return;
 }
 /* -----------------------------------------------------------------------------
  * */
@@ -241,6 +249,17 @@ out:
 	return;
 }
 /* -----------------------------------------------------------------------------
+ * @brief - block and wait for a comimg message from user space
+ *          after "message came" event replace from the chan node 
+ *          user data to 'rsp' buffer and set 'len' to user data length
+ *          
+ * @parm1 - chaninfo  - pointer to channel node related to [pid, uid]
+ * @parm2 - pid  - caller process/thread ID     - may be deleted 
+ * @parm3 - uid  - unique value for the csller  - may be deleted
+ * @parm4 - rsp  - pointer to message buffer to retreieve to the caller
+ * @parm5 - len  - pointer to the user response length.
+ *
+ * @return 0 on success or -(n) error code
  * */
 // static
 int get_user_message(struct chan_node *chaninfo, pid_t pid, s32 uid,
@@ -262,6 +281,7 @@ int get_user_message(struct chan_node *chaninfo, pid_t pid, s32 uid,
 	if(!chaninfo->rspmsg_len)
 		wait_event_interruptible(chaninfo->rspmsg_q, chaninfo->rspmsg_len > 0);
 	/* transfer user message to a caller and nulify the channel buffer
+     * move buffer, a caller has to free
 	 */
 	*len = chaninfo->rspmsg_len;
 	*rsp = chaninfo->rspmsg;
@@ -273,13 +293,28 @@ int get_user_message(struct chan_node *chaninfo, pid_t pid, s32 uid,
 out:
 	return ret;
 }
-/* ----------------------------------------------------------------------------- */
-int get_verified_channel(pid_t pid, s32 uid, void *msg, int len,
+/* -----------------------------------------------------------------------------
+ * @brief - prepare and send request to the userspace bus to open a channel
+ *
+ * @parm1 - pid  - caller process/thread ID     - may be deleted 
+ * @parm2 - uid  - unique value for the csller  - may be deleted
+ * @parm3 - msg  - message buffer to send to user bus and in return a
+ *                 retrieved message to the caller
+ * @parm4 - length - pointer to length of sent request and
+ *                   then the user bus response length.
+ * @parm5 - chaninfo  - pointer to channel node related to [pid, uid]
+ *                      may be move to the function stack
+ *
+ * @return 0 on success or -(n) error code
+ * */
+int get_verified_channel(pid_t pid, s32 uid, void *msg, int *length,
                          struct chan_node **chan)
 {
 	u32 seq;
 	struct chan_node *chaninfo;
 	struct kubix_hdr *req;
+    int len = *length;
+    void *rsp = NULL;
 	int ret = -1;
 	*chan = NULL;
 
@@ -328,6 +363,9 @@ int get_verified_channel(pid_t pid, s32 uid, void *msg, int len,
 		kfree(chaninfo);
 		goto unlock_out;
 	}
+
+	printk(KERN_INFO KUBIX": %d, %s - bus node was created for [%d.%d] channel\n",
+			__LINE__, __func__, pid, uid);
 	/* transfer request to user space */
 	req = kzalloc(sizeof(*req) + len, GFP_ATOMIC);
 	req->pid = pid;
@@ -337,13 +375,17 @@ int get_verified_channel(pid_t pid, s32 uid, void *msg, int len,
 	memcpy(req->data, msg, len);
 	seq = chaninfo->seq++;
 
+	printk(KERN_INFO KUBIX": %d, %s - sending message %p to [%d.%d] channel\n",
+			__LINE__, __func__, msg, pid, uid);
 	send_message_to_user(req, seq);
+
     chaninfo->state = CHAN_NODE_HANDSHAKE;
 
 	kfree(req);
 
-	wait_event_interruptible(chaninfo->rspmsg_q, chaninfo->rspmsg_len > 0);
-	ret = chaninfo->user_ret;
+	ret = get_user_message(chaninfo, pid, uid, &rsp, length);
+    memcpy(msg, rsp, *length);
+    kfree( rsp );
 	goto out;
 
 unlock_out:

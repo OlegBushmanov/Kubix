@@ -17,12 +17,10 @@
 # * along with this program; if not, write to the Free Software
 # * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-obj-m += kubix.o
-kubix-objs := kubix_main.o \
-			  kbx_storage.o \
-		 	  kbx_channel.o
-
-obj-m += test/
+obj-m += kubix_channel.o
+# obj-m += kubix_close.o
+# obj-m += kubix_read.o
+# obj-m += kubix_write.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules

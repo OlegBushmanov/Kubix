@@ -1,0 +1,22 @@
+# vi
+*.sw*
+*~
+
+# build
+*.o
+*.mod.c
+*.ko
+*.cmd
+*.o.d
+*.order
+*.symvers
+.tmp_versions
+
+# build libraries
+clibrary/lib/*
+clibrary/lib64/*
+ 
+kubixlib/lib/
+kubixlib/lib64/
+
+kubixlib/test/bus_test
