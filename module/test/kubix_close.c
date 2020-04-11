@@ -32,7 +32,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Oleg Bushmanov");
 MODULE_DESCRIPTION("Kernel to User Bus for Interprocess Transmissions");
 MODULE_VERSION("1.0");
-#define KUBIX "kubix.test: "
+#define KUBIX "kubix.test.channel: "
 
 
 /* ------------------------------------------------------------------------------
@@ -43,18 +43,25 @@ static int kubix_init(void)
     struct chan_node *node;
     pid_t pid;
     void *buf;
+    buf = kzalloc(1024, GFP_KERNEL);
+    len = sizeof("test get_verified_channel");
+    memcpy(buf, "test get_verified_channel", len);
+
 
     pid = current->pid;
-    buf = kzalloc(1024, GFP_KERNEL);
     err = 0;
 
 	printk(KERN_INFO KUBIX"... init started \n");
 
 	err = get_verified_channel(pid, 1, buf, &len, &node);
 	if(err){
-		printk(KERN_ERR KUBIX" faield to register CN callback.\n");
+		printk(KERN_ERR KUBIX" %s, %d - faild to obtain Kubux channel for[%d,1]\n",
+               __func__, __LINE__, pid);
 		goto err_out;
 	}
+    printk(KERN_ERR KUBIX" %s, %d - successfully obtained Kubux channel for[%d,1]\n"
+           "use command \n>$ rmmod kubix_channel",
+           __func__, __LINE__, pid);
 
 
 err_out:

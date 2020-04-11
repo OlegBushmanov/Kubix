@@ -26,61 +26,45 @@
 #include <linux/module.h>	/* Required for EXPORT_SYMBOL */
 #include <linux/linkage.h>
 #include <linux/errno.h>
-#include <linux/list.h>
-#include <linux/hashtable.h>
-#include <linux/connector.h>
-#include "kubix_main.h"
-#include "kbx_storage.h"
-#include "kbx_channel.h"
+#include "../kbx_channel.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Oleg Bushmanov");
 MODULE_DESCRIPTION("Kernel to User Bus for Interprocess Transmissions");
 MODULE_VERSION("1.0");
-#define KUBIX "kubix.module: "
+#define KUBIX "kubix.test.channel: "
 
-static struct cb_id kubix_id = { CN_SS_IDX, CN_SS_VAL };
-static char kubix_name[] = "kubix";
-static pid_t kubix_pid =   0;
-static s32 kubix_uid   = -10;
-static struct sock *nls;
 
 /* ------------------------------------------------------------------------------
  */
 static int kubix_init(void)
 {
-	int err;
-    struct chan_node *kubix_node;
+	int err, len;
+    struct chan_node *node;
+    pid_t pid;
+    void *buf;
+    buf = kzalloc(1024, GFP_KERNEL);
+    len = sizeof("test get_verified_channel");
+    memcpy(buf, "test get_verified_channel", len);
+
+
+    pid = current->pid;
+    err = 0;
 
 	printk(KERN_INFO KUBIX"... init started \n");
 
-	err = cn_add_callback(&kubix_id, kubix_name, cn_user_msg_callback);
+	err = get_verified_channel(pid, 1, buf, &len, &node);
 	if(err){
-		printk(KERN_ERR KUBIX" faield to register CN callback.\n");
+		printk(KERN_ERR KUBIX" %s, %d - faild to obtain Kubux channel for[%d,1]\n",
+               __func__, __LINE__, pid);
 		goto err_out;
 	}
+    printk(KERN_ERR KUBIX" %s, %d - successfully obtained Kubux channel for[%d,1]\n"
+           "use command \n>$ rmmod kubix_channel",
+           __func__, __LINE__, pid);
 
-	err = kubix_store_init();
-	if(err){
-		printk(KERN_ERR KUBIX" faield to initialize kubix_channels storage.\n");
-		goto err_out;
-	}
-
-	err = create_chan_node(kubix_pid, kubix_uid, &kubix_node);
-    if(err < 0)
-		return err;
-
-	printk(KERN_INFO KUBIX"initialized kubix_channels with id={%u.%u}\n",
-		kubix_id.idx, kubix_id.val);
-
-	send_kubix_handshake(kubix_node);
-
-	return 0;
 
 err_out:
-	if (nls && nls->sk_socket)
-		sock_release(nls->sk_socket);
-
 	return err;
 }
 
@@ -88,12 +72,6 @@ err_out:
  */
 static void kubix_fini(void)
 {
-	cn_del_callback(&kubix_id);
-	if (nls && nls->sk_socket)
-		sock_release(nls->sk_socket);
-
-	kubix_store_destroy();
-
 	printk(KERN_INFO KUBIX"fini stopped ... \n");
 }
 
