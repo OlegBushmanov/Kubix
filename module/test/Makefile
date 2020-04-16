@@ -18,11 +18,14 @@
 # * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 obj-m += kubix_channel.o
-# obj-m += kubix_close.o
 # obj-m += kubix_read.o
 # obj-m += kubix_write.o
+# obj-m += kubix_close.o
+obj-m += kubix_tester.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules
+	$(CC) kubix_test_cli.c -ggdb3 -o tester
 clean:
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) clean
+	rm -f tester
