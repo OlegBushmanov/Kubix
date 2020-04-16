@@ -138,7 +138,7 @@ static void kubix_handshake(struct chan_node *kbxinfo, struct kubix_hdr *rsp)
            __LINE__, __func__, rsp->pid, rsp->uid);
 }
 /* -----------------------------------------------------------------------------
- * Netlink connector callback for use responses
+ * Netlink connector callback for user responses
  * */
 void cn_user_msg_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp)
 {
@@ -431,7 +431,6 @@ int send_message_to_userspace(pid_t pid, s32 uid, void *msg, int len, int op)
 
     printk(KERN_INFO KUBIX": %d, %s - sending from node %d.%d\n",
             __LINE__, __func__, pid, uid);
-    /* move "mutex_lock(&chaninfo->lock);" here */
     if(find_chan_node(pid, uid, &chaninfo) < 0){
         printk(KERN_DEBUG KUBIX": %d, %s - node %d.%d is not found\n",
                 __LINE__, __func__, pid, uid);
@@ -458,6 +457,7 @@ int send_message_to_userspace(pid_t pid, s32 uid, void *msg, int len, int op)
 
     seq = chaninfo->seq++;
     send_message_to_user(req, seq);
+    /* request - response logic */
     if(op == KERNEL_REQUEST)
         ret = get_user_message(chaninfo, pid, uid, &msg, &len);
                                             /*      msg,  len ignored */
@@ -465,7 +465,6 @@ int send_message_to_userspace(pid_t pid, s32 uid, void *msg, int len, int op)
         chaninfo->state = CHAN_NODE_DESTROY;
 
 out:
-    /* move "mutex_unlock(&chaninfo->lock);" here */
     if(req) kfree(req);
     return ret;
 }
