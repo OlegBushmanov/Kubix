@@ -1,5 +1,5 @@
 /*
- * 	kubix_tester.c.c
+ *     kubix_tester.c.c
  * 
  * 2020+ Copyright (c) Oleg Bushmanov <olegbush55@hotmai.com>
  * All rights reserved.
